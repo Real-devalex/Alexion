@@ -1,10 +1,9 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   images: {
     remotePatterns: [
       {
-        // Supabase Storage — replace YOUR_SUPABASE_PROJECT_ID with your actual project id
+        // Supabase Storage — replace with your actual project hostname
         protocol: "https",
         hostname: "*.supabase.co",
         port: "",

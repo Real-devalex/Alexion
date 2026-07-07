@@ -1,15 +1,10 @@
 import type { Metadata } from "next";
-import AuthCard from "@/features/auth/components/AuthCard";
-import LoginForm from "@/features/auth/components/LoginForm";
+import LoginPage from "@/features/auth/components/LoginPage";
 
 export const metadata: Metadata = {
   title: "Sign In — Alexion OS",
 };
 
-export default function LoginPage() {
-  return (
-    <AuthCard>
-      <LoginForm />
-    </AuthCard>
-  );
+export default function LoginRoute() {
+  return <LoginPage />;
 }

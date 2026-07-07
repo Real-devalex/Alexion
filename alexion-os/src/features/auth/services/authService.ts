@@ -1,6 +1,5 @@
 // ============================================================
 // ALEXION OS — Auth Service
-// All authentication operations go through this service.
 // ============================================================
 
 import { createClient } from "@/lib/supabase/client";
@@ -21,7 +20,7 @@ export async function register(params: {
 }): Promise<{ user: AlexionUser | null; error: string | null }> {
   const supabase = createClient();
 
-  // Check username availability before attempting signup
+  // 1. Check username availability
   const { data: existing } = await supabase
     .from("users")
     .select("username")
@@ -32,31 +31,9 @@ export async function register(params: {
     return { user: null, error: "Username is already taken" };
   }
 
-  // The Alexion email is auto-generated — the user never chooses it.
   const alexionEmail = `${params.username.toLowerCase()}@${ALEXION_DOMAIN}`;
 
-  let avatarUrl: string | null = null;
-
-  // Upload avatar to Supabase Storage if provided
-  if (params.avatarFile) {
-    const fileExt = params.avatarFile.name.split(".").pop();
-    const filePath = `${params.username.toLowerCase()}/avatar.${fileExt}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("avatars") // Bucket name — create this in Supabase Storage
-      .upload(filePath, params.avatarFile, { upsert: true });
-
-    if (!uploadError) {
-      const { data: publicUrl } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(filePath);
-      avatarUrl = publicUrl.publicUrl;
-    }
-    // If upload fails, we continue without an avatar rather than blocking signup
-  }
-
-  // Create the Supabase Auth user
-  // The handle_new_user() database trigger will create the public.users row
+  // 2. Create the auth user FIRST (no avatar yet — we don't have the userId)
   const { data, error } = await supabase.auth.signUp({
     email: alexionEmail,
     password: params.password,
@@ -65,7 +42,7 @@ export async function register(params: {
         username:     params.username.toLowerCase(),
         display_name: params.displayName,
         country:      params.country,
-        avatar_url:   avatarUrl,
+        avatar_url:   null, // will be updated after upload
       },
     },
   });
@@ -78,15 +55,44 @@ export async function register(params: {
     return { user: null, error: "Registration failed. Please try again." };
   }
 
-  // Fetch the newly created profile
-  const { data: profile, error: profileError } = await supabase
+  const userId = data.user.id;
+
+  // 3. Upload avatar NOW that we have the userId
+  //    Path: {userId}/avatar.{ext} — matches the storage RLS policy
+  let avatarUrl: string | null = null;
+
+  if (params.avatarFile) {
+    const fileExt = params.avatarFile.name.split(".").pop() ?? "jpg";
+    const filePath = `${userId}/avatar.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(filePath, params.avatarFile, { upsert: true });
+
+    if (!uploadError) {
+      const { data: publicUrl } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+      avatarUrl = publicUrl.publicUrl;
+
+      // 4. Update the users row with the avatar URL
+      await supabase
+        .from("users")
+        .update({ avatar_url: avatarUrl })
+        .eq("id", userId);
+    }
+    // Avatar failure is non-fatal — account is still created
+  }
+
+  // 5. Fetch the created profile
+  const { data: profile } = await supabase
     .from("users")
     .select("*")
-    .eq("id", data.user.id)
+    .eq("id", userId)
     .single();
 
-  if (profileError || !profile) {
-    // Auth succeeded but profile fetch failed — not a blocker
+  if (!profile) {
+    // Auth row exists but public profile not ready yet (trigger delay) — not fatal
     return { user: null, error: null };
   }
 
@@ -110,7 +116,6 @@ export async function login(params: {
   });
 
   if (error) {
-    // Return a generic message to avoid username enumeration
     return { user: null, error: "Invalid username or password" };
   }
 
@@ -118,20 +123,19 @@ export async function login(params: {
     return { user: null, error: "Login failed. Please try again." };
   }
 
-  // Update last_login timestamp
+  // Update last_login
   await supabase
     .from("users")
     .update({ last_login: new Date().toISOString() })
     .eq("id", data.user.id);
 
-  // Fetch profile
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile } = await supabase
     .from("users")
     .select("*")
     .eq("id", data.user.id)
     .single();
 
-  if (profileError || !profile) {
+  if (!profile) {
     return { user: null, error: "Could not load profile. Please try again." };
   }
 
@@ -152,11 +156,7 @@ export async function logout(): Promise<{ error: string | null }> {
 // ─────────────────────────────────────────────────────────────
 export async function getCurrentUser(): Promise<AlexionUser | null> {
   const supabase = createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
   const { data: profile } = await supabase
@@ -165,7 +165,5 @@ export async function getCurrentUser(): Promise<AlexionUser | null> {
     .eq("id", user.id)
     .single();
 
-  if (!profile) return null;
-
-  return mapUserRow(profile);
+  return profile ? mapUserRow(profile) : null;
 }

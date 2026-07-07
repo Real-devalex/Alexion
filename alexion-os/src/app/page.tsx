@@ -1,16 +1,6 @@
-// Landing / root page — redirects based on auth state
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+// Root page — renders the boot screen client component
+import BootEntry from "@/features/boot/BootEntry";
 
-export default async function RootPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    redirect("/desktop");
-  } else {
-    redirect("/login");
-  }
+export default function RootPage() {
+  return <BootEntry />;
 }
