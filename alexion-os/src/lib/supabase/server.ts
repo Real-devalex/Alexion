@@ -1,6 +1,5 @@
 // ============================================================
 // ALEXION OS — Supabase Server Client
-// Used in Server Components, Server Actions, and Route Handlers.
 // ============================================================
 
 import { createServerClient } from "@supabase/ssr";
@@ -20,11 +19,11 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              cookieStore.set(name, value, options as any)
             );
           } catch {
-            // Called from a Server Component — cookies can only be
-            // set from middleware or a Route Handler; safe to ignore here.
+            // Safe to ignore in Server Components
           }
         },
       },

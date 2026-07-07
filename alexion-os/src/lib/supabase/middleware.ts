@@ -1,6 +1,5 @@
 // ============================================================
 // ALEXION OS — Supabase Middleware Client
-// Refreshes auth session on every request.
 // ============================================================
 
 import { createServerClient } from "@supabase/ssr";
@@ -17,33 +16,30 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
+        setAll(cookiesToSet) {
+          // cookiesToSet is typed by @supabase/ssr internally — no annotation needed
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options as Parameters<typeof supabaseResponse.cookies.set>[2])
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            supabaseResponse.cookies.set(name, value, options as any)
           );
         },
       },
     }
   );
 
-  // Refresh the session — do NOT remove this call.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
 
-  // Public routes that don't require authentication
   const publicRoutes = ["/login", "/register", "/"];
   const isPublicRoute = publicRoutes.some(
     (route) => pathname === route || pathname.startsWith(route + "?")
   );
 
-  // Redirect unauthenticated users trying to reach protected routes
   if (!user && !isPublicRoute) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
@@ -51,7 +47,6 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // Redirect authenticated users away from auth pages
   if (user && (pathname === "/login" || pathname === "/register")) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/desktop";
